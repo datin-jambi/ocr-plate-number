@@ -8,7 +8,7 @@ __pycache__/
 .mypy_cache/
 .DS_Store
 *.log
-models/
+models/*
 !models/license-plate.onnx
 .EasyOCR/
 testdata/
