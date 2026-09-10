@@ -1,6 +1,6 @@
 """Self-check parser plat nomor. Jalankan: python test_parser.py"""
 
-from app import parse_plate
+from plates import parse_plate
 
 CASES = [
     ([("B", 0.9), ("1234", 0.9), ("ABC", 0.9)], "B 1234 ABC"),

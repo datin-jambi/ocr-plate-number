@@ -12,7 +12,7 @@ import time
 
 import cv2
 
-import app
+import pipeline
 
 TRUTH = {
     # testdata/ - NotIdeal
@@ -55,7 +55,7 @@ def run(folder):
         want = TRUTH[name]
         img = cv2.imread(f)
         t = time.time()
-        got, _, _ = app.read_plate(img)
+        got, _, _ = pipeline.read_plate(img)
         el = time.time() - t
         total_t += el
         if got == want:
@@ -72,7 +72,7 @@ def run(folder):
 
 
 if __name__ == "__main__":
-    app.get_reader()
+    pipeline.get_reader()
     dirs = sys.argv[1:] or ["testdata", "testdata2"]
     tot = sum(run(d)[0] for d in dirs)
     print("TOTAL BENAR:", tot)

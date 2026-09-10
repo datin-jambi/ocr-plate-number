@@ -8,14 +8,23 @@ Flask + OpenCV (headless) + EasyOCR, siap deploy via Gunicorn atau Docker Compos
 ## 1. Struktur Proyek
 
 ```
-app.py                 Aplikasi Flask: route, config env, OCR singleton, regex parser
-test_parser.py         Self-check regex parser plat nomor (tanpa framework test)
+app.py                 Lapisan HTTP: route Flask, validasi upload, config env
+pipeline.py            Orkestrasi deteksi -> crop -> OCR -> parse
+plates.py              Domain plat Indonesia: parser, kode wilayah, koreksi OCR
+detector.py            Stage-1 deteksi plat (YOLO11n ONNX via onnxruntime)
+models/                Bobot detektor (license-plate.onnx)
+test_parser.py         Self-check parser plat (tanpa framework test)
+bench.py               Ukur akurasi + kecepatan terhadap ground truth manual
+make_sample.py         Buat sample_plate.jpg untuk smoke test endpoint
 requirements.txt       Dependensi Python
 .env / .env.example    Konfigurasi environment
 Dockerfile             Image production (python:3.10-slim + libgl1)
 docker-compose.yml     Orkestrasi container
 .gitignore
 ```
+
+Ketergantungan satu arah: `app.py` -> `pipeline.py` -> `plates.py` + `detector.py`.
+`plates.py` murni teks (tanpa OpenCV/EasyOCR), jadi parser bisa diuji instan.
 
 ---
 
