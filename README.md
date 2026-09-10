@@ -166,9 +166,49 @@ tanpa perlu menjalankan OCR.
 
 ## 8. Pipeline Deteksi
 
+Dua tahap. Tahap 1 mempersempit area, tahap 2 baru membaca teks.
+
 1. Baca upload ke buffer memori, decode via `cv2.imdecode`.
-2. Preprocessing: grayscale → bilateral filter → threshold Otsu.
-3. EasyOCR `readtext` dengan allowlist `A-Z0-9`.
-4. Gabungkan fragmen teks, cocokkan regex
-   `([A-Z]{1,2})\s*(\d{1,4})\s*([A-Z]{1,3})?`.
-5. Kembalikan match pertama yang lengkap, format `HURUF ANGKA HURUF`.
+2. **Stage-1 deteksi plat** (`detector.py`): YOLO11n ONNX via onnxruntime CPU
+   mengeluarkan kotak plat. Letterbox 640x640, NMS, ambil 3 kandidat teratas.
+3. Crop kotak plat (+padding 8%). OCR hanya berjalan di crop ini, bukan di
+   seluruh frame, sehingga stiker/spanduk/tulisan bak tidak ikut terbaca.
+4. Preprocessing crop (`variants`): citra natural, CLAHE, lalu Otsu.
+5. EasyOCR `readtext` dengan allowlist `A-Z0-9`.
+6. **Pisah baris** (`first_line`): plat Indonesia dua baris — nomor di atas,
+   masa berlaku `BB.YY` di bawah. Fragmen dikelompokkan pakai koordinat y agar
+   digit tanggal tidak ikut tergabung ke nomor.
+7. `parse_plate` mencari kombinasi `HURUF ANGKA HURUF` terbaik, dengan koreksi
+   confusion OCR sadar-posisi dan filter keras `AREA_CODES`.
+8. Kalau detektor tidak menemukan plat, fallback OCR ke full frame.
+
+Model ONNX: `models/license-plate.onnx` (YOLO11n, 10 MB, 1 kelas
+`License_Plate`). Path bisa diganti lewat env `PLATE_MODEL`.
+
+### Env tambahan
+
+| Variabel        | Default                     | Keterangan                     |
+|-----------------|-----------------------------|--------------------------------|
+| `PLATE_MODEL`   | `models/license-plate.onnx` | Path model detektor            |
+| `PLATE_CONF`    | `0.35`                      | Ambang confidence deteksi      |
+| `PLATE_THREADS` | `2`                         | Thread onnxruntime per proses  |
+
+---
+
+## 9. Benchmark
+
+```bash
+python bench.py                 # dua set sekaligus
+python bench.py testdata2       # satu set saja
+```
+
+`bench.py` memakai ground truth manual di `TRUTH`. Hasil saat ini
+(CPU, 25 gambar):
+
+| Set                         | Sebelum | Sesudah | Kecepatan       |
+|-----------------------------|---------|---------|-----------------|
+| `testdata2/` (plat jelas)   | 10/15   | 10/15   | 1.09s -> 0.74s  |
+| `testdata/` (malam, buram)  | 1/10    | 3/10    | 2.58s -> 2.19s  |
+
+Foto plat yang diambil dari dekat & tegak lurus jauh lebih akurat. Arahkan
+petugas untuk memotret plat memenuhi layar, bukan seluruh kendaraan.

@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+import detector
+
 load_dotenv()
 
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
@@ -33,6 +35,10 @@ AREA_CODES = {
 
 # Confusion OCR: dipakai sesuai posisi (huruf vs angka).
 TO_LETTER = {"0": "O", "1": "I", "2": "Z", "4": "A", "5": "S", "6": "G", "7": "T", "8": "B"}
+# Posisi kode wilayah: satu digit bisa jadi beberapa huruf ("0" -> D atau O).
+# Kandidat disaring keras oleh AREA_CODES, jadi ambigu di sini aman.
+AREA_ALT = {"0": "DO", "1": "IT", "2": "Z", "3": "BE", "4": "A", "5": "S",
+            "6": "G", "7": "T", "8": "BR", "9": "P"}
 TO_DIGIT = {"O": "0", "Q": "0", "D": "0", "U": "0", "I": "1", "L": "1", "J": "1",
             "Z": "2", "A": "4", "S": "5", "G": "6", "T": "7", "B": "8"}
 
@@ -78,14 +84,39 @@ def _coerce(chunk, table):
     return "".join(out), clean
 
 
-def _score(area, num, suf, clean, area_clean, num_clean, conf):
+def _area_candidates(chunk):
+    """Semua tafsir kode wilayah yang mungkin dari potongan OCR.
+
+    Digit dipetakan ke beberapa huruf sekaligus (AREA_ALT) karena OCR sering
+    membaca "D" sebagai "0". Hasil disaring AREA_CODES oleh pemanggil.
+    Return list (teks, jumlah_char_asli).
+    """
+    outs = [("", 0)]
+    for ch in chunk:
+        if ch.isalpha():
+            opts = [(ch, 1)]
+        elif ch in AREA_ALT:
+            opts = [(c, 0) for c in AREA_ALT[ch]]
+        else:
+            return []
+        outs = [(p + c, n + k) for p, n in outs for c, k in opts]
+    return outs
+
+
+def _score(area, num, suf, clean, area_clean, num_clean, conf, at_start):
     if area not in AREA_CODES:
-        return None
-    if area_clean == 0:  # kode wilayah harus punya huruf asli, bukan hasil coerce total
         return None
     if num_clean == 0 or num_clean * 2 < len(num):  # angka harus dominan digit asli
         return None
-    return clean + conf * 2 + (2 if suf else 0) + (1 if len(num) == 4 else 0)
+    # Kode wilayah tanpa huruf asli (mis. OCR baca "D" jadi "0") baru diterima
+    # kalau ia di awal teks DAN nomornya 4 digit yang semuanya asli. Tanpa itu
+    # plat yang kode wilayahnya gagal terbaca ("1002 SJT") akan dicuri digit
+    # dan hurufnya jadi "T 0025 JT". Untuk data pajak, not_found lebih aman
+    # daripada nomor yang salah.
+    if area_clean == 0 and not (at_start and len(num) == 4 and num_clean == 4):
+        return None
+    return clean + conf * 2 + (2 if suf else 0) + (1 if len(num) == 4 else 0) \
+        + (1 if area_clean else 0)
 
 
 def parse_plate(texts):
@@ -112,29 +143,79 @@ def parse_plate(texts):
                     b = len(sub) - a - c_len
                     if not 1 <= b <= 4:
                         continue
-                    area = _coerce(sub[:a], TO_LETTER)
                     num = _coerce(sub[a:a + b], TO_DIGIT)
                     suf = _coerce(sub[a + b:], TO_LETTER) if c_len else ("", 0)
-                    if not (area and num and suf):
+                    if not (num and suf):
                         continue
-                    clean = area[1] + num[1] + suf[1]
-                    sc = _score(area[0], num[0], suf[0], clean, area[1], num[1], conf)
-                    if sc is not None and sc > best_score:
-                        best_score = sc
-                        best = " ".join(p for p in (area[0], num[0], suf[0]) if p)
+                    for area_txt, area_clean in _area_candidates(sub[:a]):
+                        clean = area_clean + num[1] + suf[1]
+                        sc = _score(area_txt, num[0], suf[0], clean, area_clean,
+                                    num[1], conf, i == 0)
+                        if sc is not None and sc > best_score:
+                            best_score = sc
+                            best = " ".join(p for p in (area_txt, num[0], suf[0]) if p)
     return best
 
 
-def read_plate(img):
-    """OCR multi-varian; berhenti di varian pertama yang menghasilkan plat valid."""
+def first_line(raw):
+    """Ambil fragmen baris nomor plat saja, urut kiri->kanan.
+
+    Plat Indonesia 2 baris: nomor di atas, masa berlaku (BB.YY) di bawah.
+    Tanpa pemisahan ini fragmen tanggal ikut tergabung dan parser bisa
+    memilih digit tanggal sebagai nomor (mis. "D 5299 UCD" -> "D 12 S").
+    Item raw: (bbox, text, conf) dari EasyOCR detail=1.
+    """
+    if not raw:
+        return []
+    items = []
+    for box, text, conf in raw:
+        ys = [p[1] for p in box]
+        xs = [p[0] for p in box]
+        items.append((min(ys), (max(ys) - min(ys)), min(xs), text, conf))
+
+    tol = max(1.0, sorted(i[1] for i in items)[len(items) // 2] * 0.6)
+    top = min(i[0] for i in items)
+    line = [i for i in items if i[0] - top < tol]
+    line.sort(key=lambda i: i[2])
+    return [(i[3], i[4]) for i in line]
+
+
+def _ocr(img):
+    """OCR multi-varian pada satu citra. Berhenti di varian pertama yang valid."""
     reader = get_reader()
     for v in variants(img):
         raw = reader.readtext(v, allowlist=ALLOWLIST, detail=1)
-        plate = parse_plate([(r[1], r[2]) for r in raw])
+        if not raw:
+            continue
+        line = first_line(raw)
+        plate = parse_plate(line) or parse_plate([(r[1], r[2]) for r in raw])
         if plate:
-            conf = round(sum(r[2] for r in raw) / len(raw), 3)
-            return plate, conf
+            return plate, round(sum(c for _, c in line) / len(line), 3)
     return None, 0.0
+
+
+def read_plate(img):
+    """Stage-1 deteksi plat (YOLO) lalu OCR crop-nya saja.
+
+    OCR di crop jauh lebih cepat & akurat daripada di full frame karena
+    EasyOCR tidak lagi memindai teks lain (stiker, spanduk, tulisan bak).
+    Fallback ke full frame kalau detektor tidak menemukan plat sama sekali.
+    """
+    try:
+        boxes = detector.detect(img)
+    except Exception:  # model hilang/korup: jangan matikan endpoint
+        boxes = []
+
+    for box in boxes[:3]:  # kandidat teratas saja
+        c = detector.crop(img, box)
+        if c is None:
+            continue
+        plate, conf = _ocr(c)
+        if plate:
+            return plate, conf, box[4]
+
+    plate, conf = _ocr(img)
+    return plate, conf, None
 
 
 @app.get("/health")
@@ -161,9 +242,10 @@ def detect_plate():
     if img is None:
         return jsonify(status="error", message="File gambar tidak valid atau rusak"), 400
 
-    plate, conf = read_plate(img)
+    plate, conf, det_conf = read_plate(img)
     if plate:
-        return jsonify(status="success", plate_number=plate, confidence=conf)
+        return jsonify(status="success", plate_number=plate, confidence=conf,
+                       detection_confidence=round(det_conf, 3) if det_conf else None)
     return jsonify(status="not_found", message="Plat nomor tidak terdeteksi")
 
 
