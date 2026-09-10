@@ -1,4 +1,8 @@
-"""Plate Recognition API - Flask. Lapisan HTTP saja; logika ada di pipeline.py."""
+"""Plate Recognition API - Flask. Lapisan HTTP saja; logika ada di pipeline.py.
+
+Nama file wsgi.py, bukan app.py: paket `app/` akan menaungi modul app.py
+sehingga `gunicorn app:app` gagal ("Failed to find attribute 'app' in 'app'").
+"""
 
 import os
 

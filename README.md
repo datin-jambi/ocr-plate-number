@@ -8,7 +8,7 @@ Flask + OpenCV (headless) + EasyOCR, siap deploy via Gunicorn atau Docker Compos
 ## 1. Struktur Proyek
 
 ```
-app.py                 Lapisan HTTP: route Flask, validasi upload, config env
+wsgi.py                Lapisan HTTP: route Flask, validasi upload, config env
 app/
   __init__.py          Package marker
   pipeline.py          Orkestrasi deteksi -> crop -> OCR -> parse
@@ -28,7 +28,7 @@ docker-compose.yml     Orkestrasi container
 .gitignore
 ```
 
-Ketergantungan satu arah: `app.py` -> `app.pipeline` -> `app.plates` + `app.detector`.
+Ketergantungan satu arah: `wsgi.py` -> `app.pipeline` -> `app.plates` + `app.detector`.
 `app.plates` murni teks (tanpa OpenCV/EasyOCR), jadi parser bisa diuji instan.
 
 ---
@@ -82,13 +82,13 @@ ke `~/.EasyOCR`. Pastikan koneksi internet tersedia pada run pertama.
 Development (Flask dev server, auto-reload):
 
 ```bash
-python app.py
+python wsgi.py
 ```
 
 Production (Gunicorn):
 
 ```bash
-gunicorn -w 1 -k gthread --threads 4 -t 120 -b 0.0.0.0:${APP_PORT:-5000} app:app
+gunicorn -w 1 -k gthread --threads 4 -t 120 -b 0.0.0.0:${APP_PORT:-5000} wsgi:app
 ```
 
 Gunakan `-w 1`. Setiap worker memuat model EasyOCR sendiri di RAM
