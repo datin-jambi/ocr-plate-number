@@ -9,8 +9,8 @@ import os
 import cv2
 import easyocr
 
-import detector
-from plates import first_line, parse_plate
+from app import detector
+from app.plates import first_line, parse_plate
 
 ALLOWLIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 OCR_GPU = os.getenv("OCR_GPU", "False").strip().lower() in ("1", "true", "yes")

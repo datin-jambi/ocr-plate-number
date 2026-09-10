@@ -11,5 +11,6 @@ __pycache__/
 models/*
 !models/license-plate.onnx
 .EasyOCR/
-testdata/
-testdata2/
+scripts/testdata/
+scripts/testdata2/
+sample_plate.jpg

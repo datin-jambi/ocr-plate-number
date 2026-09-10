@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from pipeline import OCR_GPU, get_reader, read_plate
+from app.pipeline import OCR_GPU, get_reader, read_plate
 
 load_dotenv()
 

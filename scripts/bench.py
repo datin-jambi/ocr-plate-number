@@ -1,4 +1,4 @@
-"""Self-check akurasi pipeline plat. Jalankan: python bench.py [dir]
+"""Self-check akurasi pipeline plat. Jalankan dari root project: python scripts/bench.py [dir]
 
 Ground truth dibaca manual dari foto. Bukan framework, cuma skor + assert.
 testdata/  = foto sulit (malam, blur, plat kecil)
@@ -12,7 +12,10 @@ import time
 
 import cv2
 
-import pipeline
+# Pastikan root project ada di path saat dijalankan dari subfolder
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import app.pipeline as pipeline  # noqa: E402
 
 TRUTH = {
     # testdata/ - NotIdeal
@@ -44,6 +47,13 @@ TRUTH = {
     "plat-nomor.jpg": "B 313 EEK",
 }
 
+# Default testdata di scripts/testdata dan scripts/testdata2
+_SCRIPTS_DIR = os.path.dirname(__file__)
+_DEFAULT_DIRS = [
+    os.path.join(_SCRIPTS_DIR, "testdata"),
+    os.path.join(_SCRIPTS_DIR, "testdata2"),
+]
+
 
 def run(folder):
     files = sorted(f for f in glob.glob(f"{folder}/*") if os.path.basename(f) in TRUTH)
@@ -73,6 +83,6 @@ def run(folder):
 
 if __name__ == "__main__":
     pipeline.get_reader()
-    dirs = sys.argv[1:] or ["testdata", "testdata2"]
+    dirs = sys.argv[1:] or _DEFAULT_DIRS
     tot = sum(run(d)[0] for d in dirs)
     print("TOTAL BENAR:", tot)

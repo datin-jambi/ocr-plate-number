@@ -9,13 +9,18 @@ Flask + OpenCV (headless) + EasyOCR, siap deploy via Gunicorn atau Docker Compos
 
 ```
 app.py                 Lapisan HTTP: route Flask, validasi upload, config env
-pipeline.py            Orkestrasi deteksi -> crop -> OCR -> parse
-plates.py              Domain plat Indonesia: parser, kode wilayah, koreksi OCR
-detector.py            Stage-1 deteksi plat (YOLO11n ONNX via onnxruntime)
+app/
+  __init__.py          Package marker
+  pipeline.py          Orkestrasi deteksi -> crop -> OCR -> parse
+  plates.py            Domain plat Indonesia: parser, kode wilayah, koreksi OCR
+  detector.py          Stage-1 deteksi plat (YOLO11n ONNX via onnxruntime)
 models/                Bobot detektor (license-plate.onnx)
-test_parser.py         Self-check parser plat (tanpa framework test)
-bench.py               Ukur akurasi + kecepatan terhadap ground truth manual
-make_sample.py         Buat sample_plate.jpg untuk smoke test endpoint
+scripts/
+  test_parser.py       Self-check parser plat (tanpa framework test)
+  bench.py             Ukur akurasi + kecepatan terhadap ground truth manual
+  make_sample.py       Buat sample_plate.jpg untuk smoke test endpoint
+  testdata/            Foto uji sulit (malam, blur) — di .gitignore
+  testdata2/           Foto uji jelas — di .gitignore
 requirements.txt       Dependensi Python
 .env / .env.example    Konfigurasi environment
 Dockerfile             Image production (python:3.10-slim + libgl1)
@@ -23,8 +28,8 @@ docker-compose.yml     Orkestrasi container
 .gitignore
 ```
 
-Ketergantungan satu arah: `app.py` -> `pipeline.py` -> `plates.py` + `detector.py`.
-`plates.py` murni teks (tanpa OpenCV/EasyOCR), jadi parser bisa diuji instan.
+Ketergantungan satu arah: `app.py` -> `app.pipeline` -> `app.plates` + `app.detector`.
+`app.plates` murni teks (tanpa OpenCV/EasyOCR), jadi parser bisa diuji instan.
 
 ---
 
@@ -165,7 +170,7 @@ File kosong / ekstensi salah / gambar rusak (HTTP 400):
 ## 7. Testing Parser
 
 ```bash
-python test_parser.py
+python scripts/test_parser.py
 ```
 
 Memvalidasi regex plat Indonesia (`B 1234 ABC`, `DK9999XYZ`, dst.)
@@ -207,8 +212,8 @@ Model ONNX: `models/license-plate.onnx` (YOLO11n, 10 MB, 1 kelas
 ## 9. Benchmark
 
 ```bash
-python bench.py                 # dua set sekaligus
-python bench.py testdata2       # satu set saja
+python scripts/bench.py                 # dua set sekaligus
+python scripts/bench.py scripts/testdata2       # satu set saja
 ```
 
 `bench.py` memakai ground truth manual di `TRUTH`. Hasil saat ini

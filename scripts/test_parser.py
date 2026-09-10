@@ -1,9 +1,15 @@
-"""Self-check parser plat nomor. Jalankan: python test_parser.py
+﻿"""Self-check parser plat nomor. Jalankan dari root project: python scripts/test_parser.py
 
 Murni logika teks - tidak memuat model, jadi selesai dalam sekejap.
 """
 
-from plates import first_line, parse_plate
+import os
+import sys
+
+# Pastikan root project ada di path saat dijalankan dari subfolder
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from app.plates import first_line, parse_plate  # noqa: E402
 
 CASES = [
     ([("B", 0.9), ("1234", 0.9), ("ABC", 0.9)], "B 1234 ABC"),
